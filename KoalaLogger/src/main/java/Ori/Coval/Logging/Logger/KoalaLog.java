@@ -167,6 +167,25 @@ public class KoalaLog {
         );
     }
 
+    public static <E extends Enum<E>> E log(String name, E value, boolean post) {
+        return KoalaLogCore.doLog(
+                name, value, "string",
+                (id, v) -> KoalaLogCore.writeRecord(id, BytePacker.packString(v == null ? "" : v.name()), KoalaLogCore.nowMicros()),
+                (n, v) -> FtcDashboard.getInstance().getTelemetry().addData(n, v == null ? "" : v.name()),
+                post
+        );
+    }
+
+    public static <E extends Enum<E>> E log(String name, E value, boolean post, String metadata) {
+        return KoalaLogCore.doLog(
+                name, value, "string",
+                (id, v) -> KoalaLogCore.writeRecord(id, BytePacker.packString(v == null ? "" : v.name()), KoalaLogCore.nowMicros()),
+                (n, v) -> FtcDashboard.getInstance().getTelemetry().addData(n, v == null ? "" : v.name()),
+                post,
+                metadata
+        );
+    }
+
     public static String log(String name, String value, boolean post) {
         return KoalaLogCore.doLog(
                 name, value, "string",

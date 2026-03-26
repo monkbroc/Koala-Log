@@ -261,19 +261,34 @@ public class AutoLogAnnotationProcessor extends AbstractProcessor {
                     continue;
                 }
                 // non‐supplier static field
-                toLog.addStatement(
-                        "$T.log($S, $T.$L, $L)",
-                        KOALA_LOG, e.key, e.owner, e.member, e.post
-                );
+                if (isEnumType(field.asType())) {
+                    toLog.addStatement(
+                            "$T.log($S, $T.$L == null ? $S : $T.$L.name(), $L)",
+                            KOALA_LOG, e.key, e.owner, e.member, "", e.owner, e.member, e.post
+                    );
+                } else {
+                    toLog.addStatement(
+                            "$T.log($S, $T.$L, $L)",
+                            KOALA_LOG, e.key, e.owner, e.member, e.post
+                    );
+                }
             } else {
                 if (e.elem.getKind() != ElementKind.METHOD) {
                     continue;
                 }
                 // otherwise regular static no‐arg method
-                toLog.addStatement(
-                        "$T.log($S, $T.$L(), $L)",
-                        KOALA_LOG, e.key, e.owner, e.member, e.post
-                );
+                ExecutableElement method = (ExecutableElement) e.elem;
+                if (isEnumType(method.getReturnType())) {
+                    toLog.addStatement(
+                            "$T.log($S, $T.$L() == null ? $S : $T.$L().name(), $L)",
+                            KOALA_LOG, e.key, e.owner, e.member, "", e.owner, e.member, e.post
+                    );
+                } else {
+                    toLog.addStatement(
+                            "$T.log($S, $T.$L(), $L)",
+                            KOALA_LOG, e.key, e.owner, e.member, e.post
+                    );
+                }
             }
         }
 
@@ -457,6 +472,8 @@ public class AutoLogAnnotationProcessor extends AbstractProcessor {
                         supplierKeys.add(key);
                     }
 
+                } else if (isEnumType(t)) {
+                    toLog.addStatement("$T.log($S, this.$L == null ? $S : this.$L.name(), $L)", KOALA_LOG, key, fname, "", fname, postToFtcDashBoard);
                 } else {
                     toLog.addStatement("$T.log($S, this.$L, $L)", KOALA_LOG, key, fname, postToFtcDashBoard);
                 }
@@ -577,8 +594,15 @@ public class AutoLogAnnotationProcessor extends AbstractProcessor {
                     .addModifiers(Modifier.PUBLIC)
                     .returns(rtn)
                     .addStatement("$T result = super.$L($L)", rtn, mname, params.toString())
-                    .addParameters(paramList)
+                    .addParameters(paramList);
+            if (isEnumType(rt)) {
+                overrideBuilder
+                    .addStatement("$T.log($S, result == null ? $S : result.name(), $L)", KOALA_LOG, key, "", postToFtcDashBoard)
+                    .addStatement("return result");
+            } else {
+                overrideBuilder
                     .addStatement("return $T.log($S, result, $L)", KOALA_LOG, key, postToFtcDashBoard);
+            }
 
             MethodSpec override = overrideBuilder.build();
 
@@ -616,6 +640,14 @@ public class AutoLogAnnotationProcessor extends AbstractProcessor {
         return e == null ? null : ((PackageElement) e).getQualifiedName().toString();
     }
 
+    private boolean isEnumType(TypeMirror tm) {
+        if (tm.getKind() == TypeKind.DECLARED) {
+            Element elem = processingEnv.getTypeUtils().asElement(tm);
+            return elem != null && elem.getKind() == ElementKind.ENUM;
+        }
+        return false;
+    }
+
     private boolean isLoggableType(TypeMirror tm) {
         TypeKind k = tm.getKind();
 
@@ -639,7 +671,15 @@ public class AutoLogAnnotationProcessor extends AbstractProcessor {
             }
         }
 
-        // 3) arrays of any of the above (including wrapper arrays, primitive arrays, String[])
+        // 3) enums
+        if (k == TypeKind.DECLARED) {
+            Element elem = processingEnv.getTypeUtils().asElement(tm);
+            if (elem != null && elem.getKind() == ElementKind.ENUM) {
+                return true;
+            }
+        }
+
+        // 4) arrays of any of the above (including wrapper arrays, primitive arrays, String[])
         if (k == TypeKind.ARRAY) {
             ArrayType at = (ArrayType) tm;
             return isLoggableType(at.getComponentType());
